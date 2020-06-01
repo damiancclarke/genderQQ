@@ -29,7 +29,7 @@ foreach ado in ivreg2 estout plausexog {
     if _rc!=0 ssc install `ado'
 }
 
-log using "$LOG/analysisDHS.txt", replace text
+log using "$LOG/analysisDHS-s.txt", replace text
 
 
 *******************************************************************************
@@ -80,6 +80,9 @@ tab contracep , gen(_contracep)
 tab educf     , gen(_educf)
 tab educp     , gen(_educp)
 tab wealth    , gen(_wealth)
+drop _educp1
+drop _educf1
+drop _wealth1
 
 
 local base malec _country* _yb* _age* _contracep*
@@ -97,7 +100,7 @@ local wt [pw=sweight]
 local y  school_zscore
 local x  fert
 
-*Estadística Descriptiva
+*EstadÃ­stica Descriptiva
 lab var school_zscore "Education Z-Score"
 lab var educ          "Years of Education"
 lab var age           "Child's Age"
@@ -119,7 +122,6 @@ replace school_zscore=. if age<6
 lab var school_zscore "Education Z-Score"
 count if abs(school_zscore)>5 & keeper==0
 ***
-*BELOW IS FOR APPENDIX RESULTS
 *replace keeper=1 if abs(school_zscore)>5 & keeper==0
 ***
 /*
@@ -606,145 +608,6 @@ label nonotes mlabels(, none) nonumbers style(tex) fragment noline;
 estimates clear
 drop Twin
 
-/*
-exit
-
-
-*-------------------------------------------------------------------------------
-*--- (9) Pooled IV estimates using Angrist et al. (JoLE 2012)
-*-------------------------------------------------------------------------------
-preserve
-keep if two_plus==1|three_plus==1|four_plus==1
-
-local zs
-local zGirl
-local zBoy
-foreach n in two three four {
-    reg twin_`n'_fam `c2' `wt' if `n'_plus==1
-    *Mogstad Wiswall Economics Letters
-    predict twin_`n'_star                              if `n'_plus==1
-    replace twin_`n'_star = twin_`n'_fam-twin_`n'_star if `n'_plus==1
-    replace twin_`n'_star = 0                          if `n'_plus==0
-    
-    local zs `zs' twin_`n'_star
-
-    foreach S in Girl Boy {
-        reg twin`S'_`n'_fam `c2' `wt' if `n'_plus==1
-        predict twin`S'_`n'_star                                    if `n'_plus==1
-        replace twin`S'_`n'_star = twin`S'_`n'_fam-twin`S'_`n'_star if `n'_plus==1
-        replace twin`S'_`n'_star = 0                                if `n'_plus==0
-
-        local z`S' `z`S'' twin`S'_`n'_star
-    }
-    
-}
-sum `zs'
-sum `zGirl'
-sum `zBoy'
-
-local p partial(`base') savefirst
-
-ivreg2 `y' `c2' (`x'=`zs')   `wt', `se' `p'
-ivreg2 `y' `c2' (`x'=`zs')   `wt' if gender=="F", `se' `p'
-ivreg2 `y' `c2' (`x'=`zs')   `wt' if gender=="M", `se' `p'
-
-ivreg2 `y' `c2' (daughters sons=`zGirl' `zBoy') `wt', `se' `p'
-ivreg2 `y' `c2' (daughters sons=`zGirl' `zBoy') `wt' if gender=="F", `se' `p'
-ivreg2 `y' `c2' (daughters sons=`zGirl' `zBoy') `wt' if gender=="M", `se' `p'
-
-
-
-* Testing for child school ages
-gen age1 = age if bord==1
-gen age2 = age if bord==2
-gen age3 = age if bord==3
-gen age4 = age if bord==4
-bys id: egen age1m = mean(age1)
-bys id: egen age2m = mean(age2)
-bys id: egen age3m = mean(age3)
-bys id: egen age4m = mean(age4)
-gen diff2_1=age1m-age2m
-gen diff3_1=age1m-age3m
-gen diff4_1=age1m-age4m
-gen diff3_2=age2m-age3m
-gen diff4_2=age2m-age4m
-gen diff4_3=age3m-age4m
-gen girl = gender=="F"
-gen fertGirl = fert*girl
-
-generat diff = diff2_1 if bord==1&two_plus==1
-replace diff = diff3_1 if bord==1&three_plus==1&diff3_1!=.
-replace diff = diff3_2 if bord==2&three_plus==1&diff3_2!=.
-replace diff = diff4_1 if bord==1&four_plus==1&diff4_1!=.
-replace diff = diff4_2 if bord==2&four_plus==1&diff4_2!=.
-replace diff = diff4_3 if bord==3&four_plus==1&diff4_3!=.
-tab diff
-
-generat diffL6 = 1 if diff<6 & diff>0
-replace diffL6 = 0 if diff>=6& diff!=.
-foreach l of numlist 0 1 {
-    ivreg2 `y' `c2' (`x'=`zs')   `wt' if diffL6==`l', `se' `p'
-    ivreg2 `y' `c2' (`x'=`zs')   `wt' if diffL6==`l'&gender=="F", `se' `p'
-    ivreg2 `y' `c2' (`x'=`zs')   `wt' if diffL6==`l'&gender=="M", `se' `p'
-
-    ivreg2 `y' `c2' (daughters sons=`zGirl' `zBoy') `wt' if diffL6==`l', `se' `p'
-    ivreg2 `y' `c2' (daughters sons=`zGirl' `zBoy') `wt' if diffL6==`l'&gender=="F", `se' `p'
-    ivreg2 `y' `c2' (daughters sons=`zGirl' `zBoy') `wt' if diffL6==`l'&gender=="M", `se' `p'
-
-}
-exit
-
-
-
-foreach k in two three four {
-    preserve
-    keep if `k'_plus==1
-    if `"`k'"'=="two" {
-        gen diff     = diff2_1 if bord==1
-    }
-    if `"`k'"'=="three" {
-        gen diff     = diff3_1 if bord==1
-        replace diff = diff3_2 if bord==2
-    }
-    if `"`k'"'=="four" {
-        gen diff     = diff4_1 if bord==1
-        replace diff = diff4_2 if bord==2
-        replace diff = diff4_3 if bord==3        
-    }
-
-    gen Twin = twin_`k'_fam
-    gen TwinGirl = twin_`k'_fam*girl
-    local xs fert fertGirl
-    local z  Twin TwinGirl
-    dis "Age 12 and over, all, `k' plus"
-    ivreg2 `y' `c2' (`xs'=`z') `wt' if diff>=6&diff!=.&age>=12, `se' `p' 
-    ivreg2 `y' `c2' (`xs'=`z') `wt' if diff<6 &diff>=0&age>=12, `se' `p'
-
-    dis "Aged under 12, all, `k' plus"
-    ivreg2 `y' `c2' (`xs'=`z') `wt' if diff>=6&diff!=.&age<12, `se' `p' 
-    ivreg2 `y' `c2' (`xs'=`z') `wt' if diff<6 &diff>=0&age<12, `se' `p'
-
-    restore
-}
-exit
-preserve
-local p partial(`base') 
-keep if four_plus==1&age>=12
-
-local z twin_four_fam
-ivreg2 `y' `c2' (`x'=`z') `wt' if diff>=6&diff!=., `se' `p' 
-ivreg2 `y' `c2' (`x'=`z') `wt' if diff<6 &diff>=0, `se' `p'
-
-ivreg2 `y' `c2' (`x'=`z') `wt' if diff>=6&diff!=.&gender=="F", `se' `p' 
-ivreg2 `y' `c2' (`x'=`z') `wt' if diff<6&diff>=0 &gender=="F", `se' `p'
-
-ivreg2 `y' `c2' (`x'=`z') `wt' if diff>=6&diff!=.&gender=="M", `se' `p' 
-ivreg2 `y' `c2' (`x'=`z') `wt' if diff<6&diff>=0 &gender=="M", `se' `p'
-
-restore
-
-exit
-*/
 ********************************************************************************
 **** (5) IV effect of sisters and brothers (using girl twin and boy twins at
 ****     order n), subsequent inclusion of twin predictors
@@ -876,7 +739,6 @@ foreach n in two three four {
     restore
 }
 
-
 ***PANEL A, TABLE 3
 lab var sons "Total Sons"
 lab var daughters "Total Daughters"
@@ -965,8 +827,169 @@ label nonotes mlabels(, none) nonumbers style(tex) fragment noline;
 estimates clear
 drop BoyTwin GirlTwin
 
+/*
+*-------------------------------------------------------------------------------
+*--- (6) Pooled IV estimates using Angrist et al. (JoLE 2012)
+*-------------------------------------------------------------------------------
+preserve
+keep if two_plus==1|three_plus==1|four_plus==1
+
+local zs
+local zGirl
+local zBoy
+foreach n in two three four {
+    reg twin_`n'_fam `c2' `wt' if `n'_plus==1
+    *Mogstad Wiswall Economics Letters
+    predict twin_`n'_star                              if `n'_plus==1
+    replace twin_`n'_star = twin_`n'_fam-twin_`n'_star if `n'_plus==1
+    replace twin_`n'_star = 0                          if `n'_plus==0
+    
+    local zs `zs' twin_`n'_star
+
+    foreach S in Girl Boy {
+        reg twin`S'_`n'_fam `c2' `wt' if `n'_plus==1
+        predict twin`S'_`n'_star                                    if `n'_plus==1
+        replace twin`S'_`n'_star = twin`S'_`n'_fam-twin`S'_`n'_star if `n'_plus==1
+        replace twin`S'_`n'_star = 0                                if `n'_plus==0
+
+        local z`S' `z`S'' twin`S'_`n'_star
+    }
+    
+}
+sum `zs'
+sum `zGirl'
+sum `zBoy'
+
+local p partial(`base') savefirst
+
+
+*OLS
+eststo: regress `y' `c2' `x' `wt', `se'
+eststo: regress `y' `c2' `x' `wt' if gender=="F", `se'
+eststo: regress `y' `c2' `x' `wt' if gender=="M", `se' 
+eststo: regress `y' `c2' daughters sons `wt', `se'
+eststo: regress `y' `c2' daughters sons `wt' if gender=="F", `se'
+eststo: regress `y' `c2' daughters sons `wt' if gender=="M", `se' 
+
+*IV
+eststo: ivreg2 `y' `c2' (`x'=`zs')   `wt', `se' `p'
+eststo: ivreg2 `y' `c2' (`x'=`zs')   `wt' if gender=="F", `se' `p'
+eststo: ivreg2 `y' `c2' (`x'=`zs')   `wt' if gender=="M", `se' `p'
+eststo: ivreg2 `y' `c2' (daughters sons=`zGirl' `zBoy') `wt', `se' `p'
+eststo: ivreg2 `y' `c2' (daughters sons=`zGirl' `zBoy') `wt' if gender=="F", `se' `p'
+eststo: ivreg2 `y' `c2' (daughters sons=`zGirl' `zBoy') `wt' if gender=="M", `se' `p'
+exit
+#delimit ;
+esttab est1 est2 est3 est7 est8 est9 using "$OUT/pooledFertility.tex", replace
+keep(`x') nogaps b(%-9.3f) se(%-9.3f) starlevel("*" 0.10 "**" 0.05 "***" 0.01)
+stats(N, fmt(%12.0gc) label("\\ Observations")) label nonotes mlabels(, none)
+nonumbers style(tex) fragment noline;
+
+esttab est4 est5 est6 est10 est11 est12 using "$OUT/pooledSonsDaughters.tex",
+replace keep(daughters sons) nogaps b(%-9.3f) se(%-9.3f) 
+stats(N, fmt(%12.0gc) label("\\ Observations")) label nonotes mlabels(, none)
+nonumbers style(tex) fragment noline starlevel("*" 0.10 "**" 0.05 "***" 0.01);
+#delimit cr
+estimates clear
+*restore
+
+*/
+/*
+* Testing for child school ages
+gen age1 = age if bord==1
+gen age2 = age if bord==2
+gen age3 = age if bord==3
+gen age4 = age if bord==4
+bys id: egen age1m = mean(age1)
+bys id: egen age2m = mean(age2)
+bys id: egen age3m = mean(age3)
+bys id: egen age4m = mean(age4)
+gen diff2_1=age1m-age2m
+gen diff3_1=age1m-age3m
+gen diff4_1=age1m-age4m
+gen diff3_2=age2m-age3m
+gen diff4_2=age2m-age4m
+gen diff4_3=age3m-age4m
+gen girl = gender=="F"
+gen fertGirl = fert*girl
+
+generat diff = diff2_1 if bord==1&two_plus==1
+replace diff = diff3_1 if bord==1&three_plus==1&diff3_1!=.
+replace diff = diff3_2 if bord==2&three_plus==1&diff3_2!=.
+replace diff = diff4_1 if bord==1&four_plus==1&diff4_1!=.
+replace diff = diff4_2 if bord==2&four_plus==1&diff4_2!=.
+replace diff = diff4_3 if bord==3&four_plus==1&diff4_3!=.
+tab diff
+
+generat diffL6 = 1 if diff<6 & diff>0
+replace diffL6 = 0 if diff>=6& diff!=.
+foreach l of numlist 0 1 {
+    ivreg2 `y' `c2' (`x'=`zs')   `wt' if diffL6==`l', `se' `p'
+    ivreg2 `y' `c2' (`x'=`zs')   `wt' if diffL6==`l'&gender=="F", `se' `p'
+    ivreg2 `y' `c2' (`x'=`zs')   `wt' if diffL6==`l'&gender=="M", `se' `p'
+
+    ivreg2 `y' `c2' (daughters sons=`zGirl' `zBoy') `wt' if diffL6==`l', `se' `p'
+    ivreg2 `y' `c2' (daughters sons=`zGirl' `zBoy') `wt' if diffL6==`l'&gender=="F", `se' `p'
+    ivreg2 `y' `c2' (daughters sons=`zGirl' `zBoy') `wt' if diffL6==`l'&gender=="M", `se' `p'
+
+}
+exit
+
+
+
+foreach k in two three four {
+    preserve
+    keep if `k'_plus==1
+    if `"`k'"'=="two" {
+        gen diff     = diff2_1 if bord==1
+    }
+    if `"`k'"'=="three" {
+        gen diff     = diff3_1 if bord==1
+        replace diff = diff3_2 if bord==2
+    }
+    if `"`k'"'=="four" {
+        gen diff     = diff4_1 if bord==1
+        replace diff = diff4_2 if bord==2
+        replace diff = diff4_3 if bord==3        
+    }
+
+    gen Twin = twin_`k'_fam
+    gen TwinGirl = twin_`k'_fam*girl
+    local xs fert fertGirl
+    local z  Twin TwinGirl
+    dis "Age 12 and over, all, `k' plus"
+    ivreg2 `y' `c2' (`xs'=`z') `wt' if diff>=6&diff!=.&age>=12, `se' `p' 
+    ivreg2 `y' `c2' (`xs'=`z') `wt' if diff<6 &diff>=0&age>=12, `se' `p'
+
+    dis "Aged under 12, all, `k' plus"
+    ivreg2 `y' `c2' (`xs'=`z') `wt' if diff>=6&diff!=.&age<12, `se' `p' 
+    ivreg2 `y' `c2' (`xs'=`z') `wt' if diff<6 &diff>=0&age<12, `se' `p'
+
+    restore
+}
+exit
+preserve
+local p partial(`base') 
+keep if four_plus==1&age>=12
+
+local z twin_four_fam
+ivreg2 `y' `c2' (`x'=`z') `wt' if diff>=6&diff!=., `se' `p' 
+ivreg2 `y' `c2' (`x'=`z') `wt' if diff<6 &diff>=0, `se' `p'
+
+ivreg2 `y' `c2' (`x'=`z') `wt' if diff>=6&diff!=.&gender=="F", `se' `p' 
+ivreg2 `y' `c2' (`x'=`z') `wt' if diff<6&diff>=0 &gender=="F", `se' `p'
+
+ivreg2 `y' `c2' (`x'=`z') `wt' if diff>=6&diff!=.&gender=="M", `se' `p' 
+ivreg2 `y' `c2' (`x'=`z') `wt' if diff<6&diff>=0 &gender=="M", `se' `p'
+
+restore
+
+exit
+*/
+
+/*
 ********************************************************************************
-**** (6) IV bounds
+**** (7) IV bounds
 ********************************************************************************    
 foreach n in two three four {
     preserve
@@ -1015,10 +1038,88 @@ foreach n in two three four {
     #delimit cr
     restore
 }
-exit
 */
+
+
+preserve
+keep if two_plus==1|three_plus==1|four_plus==1
+
+local zs
+local zGirl
+local zBoy
+foreach n in two three four {
+    reg twin_`n'_fam `c2' `wt' if `n'_plus==1
+    *Mogstad Wiswall Economics Letters
+    predict twin_`n'_star                              if `n'_plus==1
+    replace twin_`n'_star = twin_`n'_fam-twin_`n'_star if `n'_plus==1
+    replace twin_`n'_star = 0                          if `n'_plus==0
+    
+    local zs `zs' twin_`n'_star
+
+    foreach S in Girl Boy {
+        reg twin`S'_`n'_fam `c2' `wt' if `n'_plus==1
+        predict twin`S'_`n'_star                                    if `n'_plus==1
+        replace twin`S'_`n'_star = twin`S'_`n'_fam-twin`S'_`n'_star if `n'_plus==1
+        replace twin`S'_`n'_star = 0                                if `n'_plus==0
+
+        local z`S' `z`S'' twin`S'_`n'_star
+    }
+    
+}
+sum `zs'
+sum `zGirl'
+sum `zBoy'
+
+local p partial(`base') savefirst
+
+
+gen UB    = .
+gen LB    = .
+gen gendb = ""
+gen gval  = .
+local j = 1
+
+foreach gend in F M {
+    if `"`gend'"'=="F" local z `zGirl'
+    if `"`gend'"'=="M" local z `zBoy'
+
+    foreach var in x y {
+        qui reg ``var'' `c2' `wt' if gender=="`gend'"
+        qui predict `var'res      if gender=="`gend'", resid
+    }
+
+    local cc if gender=="`gend'"
+    local mval = 0.05 
+    foreach num of numlist 0(1)10 {
+        local mu = (`num'/10)*`mval'/2
+        local om = ((`num'/10)*`mval'/sqrt(12))^2
+        plausexog ltz yres (xres = `z') `wt' `cc', mu(`mu' `mu' `mu') omega(`om' `om' `om')
+        replace UB = e(ub_xres) in `j'
+        replace LB = e(lb_xres) in `j'
+        replace gendb = "`gend'" in `j'
+        replace gval = `mval'*`num' in `j'
+        local ++j
+    }
+    drop xres yres
+}
+replace gval = gval*0.1
+format gval %5.2f
+format UB   %5.2f
+format LB   %5.2f
+#delimit ;
+twoway line LB gval if gendb=="F", lpattern(solid) lcolor(red) lwidth(medthick) 
+    || line UB gval if gendb=="F", lpattern(solid) lcolor(red) lwidth(medthick) 
+    || line LB gval if gendb=="M", lpattern(dash) lcolor(blue) lwidth(medthick) 
+    || line UB gval if gendb=="M", lpattern(dash) lcolor(blue) lwidth(medthick) 
+scheme(s1mono) legend(order(1 "95% CI: Girl Children" 3 "95% CI: Boy Children"))
+yline(0, lcolor(gs14) lpattern(solid))
+ytitle("Bounds Estimates of QQ Trade-off") xtitle({&delta});
+graph export "$OUT/boundsEstimates_Pooled.eps", replace;
+#delimit cr
+restore
+
 ********************************************************************************
-**** (7) Gender bias
+**** (8) Gender bias
 ********************************************************************************    
 replace idealGirl = . if idealGirl>20
 replace idealBoys = . if idealBoys>20
@@ -1043,7 +1144,7 @@ replace BGquintileIndiv=3 if BGquintileIndiv==5
 
 
 ********************************************************************************
-**** (8) Descriptive Plots
+**** (9) Descriptive Plots
 ********************************************************************************
 preserve
 collapse daughters sons idealGirls idealBoys BGratioInd, by(country WBcountry)
@@ -1060,9 +1161,13 @@ replace NAME = "Dominican Rep." if NAME=="Dominican Republic"
 replace NAME = "Egypt" if NAME=="Egypt, Arab Rep."
 replace NAME = "Kyrgyzstan" if NAME=="Kyrgyz Republic"
 replace NAME = "Yemen" if NAME=="Yemen, Rep."
-
+replace NAME = "Timor-Leste" if NAME=="Timor Leste"
 
 merge 1:1 NAME using "$DAT/shape/world"
+tab NAME if _merge==1
+tab NAME if _merge==2
+
+
 format BoyGirlRatio   %5.3f
 format desiredBoyGirl %5.3f
 
@@ -1104,7 +1209,6 @@ keep if DHS==1
 keep country BGquintileIdealW desiredBoyGirl
 tempfile countrylevel
 save `countrylevel'
-exit
 restore
 
 preserve
@@ -1120,6 +1224,7 @@ gen LBIV       = .
 merge m:1 country using `countrylevel'
 
 keep if keeper == 0
+keep if two_plus==1|three_plus==1|four_plus==1
 set matsize 1000
 
 local j = 1
@@ -1154,6 +1259,39 @@ foreach n in two three four {
     drop zBoy
 }
 
+local k=`k'+2
+foreach quint of numlist 1(1)5 {
+    local zs
+    foreach n in two three four {
+        local cond if BGquintileIdealW==`quint'&`n'_plus==1
+        reg twin_`n'_fam `c2' `wt' `cond'
+        *Mogstad Wiswall Economics Letters
+        predict twin_`n'_star                              if BGquintileIdealW==`quint'&`n'_plus==1
+        replace twin_`n'_star = twin_`n'_fam-twin_`n'_star if BGquintileIdealW==`quint'&`n'_plus==1
+        replace twin_`n'_star = 0                          if BGquintileIdealW==`quint'&`n'_plus==0
+        
+        gen twin_`n'_starBoy = twin_`n'_star*malec
+        local zs `zs' twin_`n'_star twin_`n'_starBoy        
+    }
+    local cond if BGquintileIdealW==`quint'
+    local p partial(`base') savefirst
+    eststo: reg `y' `x' fertBoy `c2' `wt' `cond', `se'
+    replace estimate = _b[fertBoy] in `j'
+    replace LB = _b[fertBoy]+invnorm(0.025)*_se[fertBoy] in `j'
+    replace UB = _b[fertBoy]+invnorm(0.975)*_se[fertBoy] in `j'
+    replace estnum = `k' in `j'
+
+    eststo: ivreg2 `y' (`x' fertBoy=`zs') `c2' `wt' `cond', `se' `p'
+    replace estimateIV = _b[fertBoy] in `j'
+    replace LBIV = _b[fertBoy]+invnorm(0.025)*_se[fertBoy] in `j'
+    replace UBIV = _b[fertBoy]+invnorm(0.975)*_se[fertBoy] in `j'
+    
+    local ++j
+    local ++k
+    drop `zs'
+}
+
+
 format estimate %5.2f
 #delimit ;
 twoway scatter estimate estnum in 1/`k', msymbol(S) mcolor(black) ||
@@ -1179,7 +1317,7 @@ text(0.5 3 "Two-Plus") text(0.5 10 "Three-Plus") text(0.5 17 "Four-Plus")
 legend(label(1 "Point Estimate (IV)") label(2 "95% Confidence Interval"));
 graph export "$OUT/IV/genderBiasQQ.eps", replace;
 #delimit cr
-exit
+
 lab var fert    "Number of Children"
 lab var fertBoy "N Children $\times$ Boy Child"
 foreach num of numlist 1(1)5 {
@@ -1199,6 +1337,13 @@ foreach num of numlist 1(1)5 {
     #delimit cr
 }
 estimates clear
+
+restore
+preserve
+merge m:1 country using `countrylevel'
+
+keep if keeper == 0
+gen fertBoy    = fert*malec
 
 gen fertxBias     = fert*desiredBoyGirl
 gen fertxBiasxBoy = fertBoy*desiredBoyGirl
@@ -1235,7 +1380,7 @@ exit
 
 
 ********************************************************************************
-**** (9) Non-linear IV estimates of Mogstad and Wiswall
+**** (10) Non-linear IV estimates of Mogstad and Wiswall
 ********************************************************************************
 keep if fert<=6
 local nbstrap 10
